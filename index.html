@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>🔄 단어 치환기</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    :root {
+      --bg-color: #fff; --text-color: #222; --border-color: #ccc;
+      --input-bg: #f9f9f9; --btn-bg: #f0f0f0; --btn-hover-bg: #e0e0e0;
+      --accent-color: #007bff; --delete-bg: #ffdddd; --delete-border: #ff9999;
+      --move-bg: #eef; --move-border: #88f; --reset-bg: #f8d7da;
+    }
+    body.dark {
+      --bg-color: #222; --text-color: #ddd; --border-color: #555;
+      --input-bg: #333; --btn-bg: #444; --btn-hover-bg: #555;
+      --reset-bg: #583034;
+    }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+      max-width: 700px; margin: 40px auto; padding: 0 20px; 
+      background-color: var(--bg-color); color: var(--text-color);
+      transition: background-color 0.3s, color 0.3s; 
+    }
+    textarea, input[type="text"] { 
+      width: 100%; padding: 10px; margin-bottom: 12px; font-size: 16px; 
+      box-sizing: border-box; background: var(--input-bg); color: var(--text-color); 
+      border: 1px solid var(--border-color); border-radius: 8px;
+      /* ✨ 변경점: 폰트 상속 및 크기 조절 수정 */
+      font-family: inherit; /* 부모 요소의 폰트를 그대로 사용 */
+      resize: vertical; /* 세로로만 크기 조절 가능 */
+    }
+    .pair { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+    .pair input { flex: 1 1 40%; min-width: 40%; }
+    button { 
+      padding: 8px 12px; font-size: 14px; border: none; border-radius: 8px;
+      cursor: pointer; background-color: var(--btn-bg); color: var(--text-color);
+      transition: background-color 0.2s;
+    }
+    button:hover { background-color: var(--btn-hover-bg); }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+    .copy-btn { position: absolute; top: 8px; right: 8px; padding: 4px 8px; font-size: 12px; }
+    .output-container, .input-container { position: relative; }
+    #output { 
+      white-space: pre-wrap; background: var(--input-bg); font-size: 16px; line-height: 1.5;
+      min-height: 100px; border: 1px solid var(--border-color); padding: 10px; border-radius: 8px;
+    }
+    #output mark { background-color: #ffd700; color: #000; border-radius: 3px; padding: 0 2px; }
+    .move-btn { background: var(--move-bg); border: 1px solid var(--move-border); }
+    .delete-btn { background: var(--delete-bg); border: 1px solid var(--delete-border); }
+    #resetBtn { background-color: var(--reset-bg); }
+    .header { display: flex; justify-content: space-between; align-items: center; }
+    @media screen and (max-width: 500px) { .pair input { min-width:100%; flex:1 1 100%; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🔄 단어 치환기</h1>
+    <button onclick="toggleDarkMode()">🌗</button>
+  </div>
+
+  <h3>① 문장 입력</h3>
+  <div class="input-container">
+    <textarea id="inputText" rows="5" placeholder="문장을 입력하세요."></textarea>
+    <button class="copy-btn" onclick="copyWithFeedback(this, 'inputText')">복사</button>
+  </div>
+
+  <h3>② 단어쌍 관리 (총 <span id="pairCount">0</span>개)</h3>
+  <div id="wordPairs"></div>
+
+  <div class="controls">
+    <button onclick="addPair()">+ 단어쌍 추가</button>
+    <button onclick="replaceWords()">🔄 변환</button>
+    <button onclick="document.getElementById('fileInput').click()">📂 파일 불러오기</button>
+    <input type="file" id="fileInput" accept=".txt" style="display: none;">
+    <button onclick="downloadTXT()">📤 TXT 저장</button>
+    <button id="resetBtn" onclick="resetPairs()">🗑️ 전체 초기화</button>
+  </div>
+
+  <h3>③ 변환된 문장</h3>
+  <div class="output-container">
+    <div id="output"></div>
+    <button class="copy-btn" onclick="copyWithFeedback(this, 'output')">복사</button>
+  </div>
+
+  <script>
+    const inputText = document.getElementById('inputText');
+    const output = document.getElementById('output');
+    const wordPairsContainer = document.getElementById('wordPairs');
+    const pairCountEl = document.getElementById('pairCount');
+    const fileInput = document.getElementById('fileInput');
+
+    document.addEventListener('DOMContentLoaded', () => {
+      if (localStorage.getItem('darkMode') === 'enabled') {
+        document.body.classList.add('dark');
+      }
+      loadPairs();
+    });
+
+    function savePairs() {
+      const pairs = Array.from(document.querySelectorAll('.pair')).map(p => ({
+        from: p.querySelector('.from').value,
+        to: p.querySelector('.to').value,
+      }));
+      localStorage.setItem('wordPairs', JSON.stringify(pairs));
+    }
+
+    function loadPairs() {
+      const savedPairs = JSON.parse(localStorage.getItem('wordPairs'));
+      wordPairsContainer.innerHTML = '';
+      if (savedPairs && savedPairs.length > 0) {
+        savedPairs.forEach(p => addPair(p.from, p.to, false));
+      } else {
+        addPair('', '', false); addPair('', '', false);
+      }
+      updateAllCounts();
+    }
+
+    function addPair(from = '', to = '', shouldSave = true) {
+      const pair = document.createElement('div');
+      pair.className = 'pair';
+      pair.innerHTML = `
+        <input class="from" type="text" placeholder="원본 단어" value="${from}">
+        <input class="to" type="text" placeholder="수정 단어" value="${to}">
+        <span class="count">횟수: 0</span>
+        <button class="move-btn" onclick="moveUp(this)">↑</button>
+        <button class="move-btn" onclick="moveDown(this)">↓</button>
+        <button class="delete-btn" onclick="deletePair(this)">❌</button>
+      `;
+      wordPairsContainer.appendChild(pair);
+      pair.querySelectorAll('input').forEach(el => el.addEventListener('input', () => {
+        updateAllCounts();
+        savePairs();
+      }));
+      updateAllCounts();
+      if (shouldSave) savePairs();
+    }
+
+    function deletePair(btn) {
+      btn.parentElement.remove();
+      updateAllCounts();
+      savePairs();
+    }
+
+    function resetPairs() {
+      if (confirm('정말로 모든 단어쌍을 초기화하시겠습니까?')) {
+        wordPairsContainer.innerHTML = '';
+        addPair('', '', false);
+        addPair('', '', false);
+        savePairs();
+        updateAllCounts();
+      }
+    }
+
+    function toggleDarkMode() {
+      document.body.classList.toggle('dark');
+      localStorage.setItem('darkMode', document.body.classList.contains('dark') ? 'enabled' : 'disabled');
+    }
+
+    function moveUp(btn) {
+      const cur = btn.parentElement, prev = cur.previousElementSibling;
+      if (prev) { cur.parentNode.insertBefore(cur, prev); savePairs(); }
+    }
+
+    function moveDown(btn) {
+      const cur = btn.parentElement, nxt = cur.nextElementSibling;
+      if (nxt) { cur.parentNode.insertBefore(nxt, cur); savePairs(); }
+    }
+
+    function replaceWords() {
+      let text = inputText.value;
+      let displayHtml = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      
+      document.querySelectorAll('.pair').forEach(pair => {
+        const from = pair.querySelector('.from').value.trim();
+        const to = pair.querySelector('.to').value.trim();
+        if (from) {
+          const regex = new RegExp(from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+          displayHtml = displayHtml.replace(regex, `<mark>${to}</mark>`);
+        }
+      });
+      output.innerHTML = displayHtml;
+    }
+
+    function copyWithFeedback(btn, elementId) {
+      const el = document.getElementById(elementId);
+      const textToCopy = el.value !== undefined ? el.value : el.innerText;
+      navigator.clipboard.writeText(textToCopy).then(() => {
+        const originalText = btn.innerText;
+        btn.innerText = '✅ 완료!';
+        setTimeout(() => { btn.innerText = originalText; }, 1500);
+      });
+    }
+
+    function updateAllCounts() {
+      pairCountEl.innerText = document.querySelectorAll('.pair').length;
+      document.querySelectorAll('.pair').forEach(updateWordCount);
+    }
+
+    function updateWordCount(pair) {
+      const from = pair.querySelector('.from').value.trim();
+      const countEl = pair.querySelector('.count');
+      if (from) {
+        const regex = new RegExp(from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        const count = (inputText.value.match(regex) || []).length;
+        countEl.innerText = `횟수: ${count}`;
+      } else {
+        countEl.innerText = '횟수: 0';
+      }
+    }
+
+    function downloadTXT() {
+      const pairsText = Array.from(document.querySelectorAll('.pair'))
+        .map(p => `${p.querySelector('.from').value},${p.querySelector('.to').value}`)
+        .join('\n');
+      const blob = new Blob([pairsText], { type: 'text/plain;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = '단어쌍.txt';
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
+    }
+    
+    fileInput.addEventListener('change', (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target.result;
+        wordPairsContainer.innerHTML = '';
+        const lines = text.split('\n').filter(line => line.trim() !== '');
+        if (lines.length > 0) {
+            lines.forEach(line => {
+                const parts = line.split(',');
+                addPair(parts[0] || '', parts[1] || '', false);
+            });
+        } else {
+            addPair('', '', false); addPair('', '', false);
+        }
+        savePairs();
+        updateAllCounts();
+      };
+      reader.readAsText(file);
+      event.target.value = '';
+    });
+
+    inputText.addEventListener('input', () => {
+      replaceWords();
+      updateAllCounts();
+    });
+  </script>
+</body>
+</html>
