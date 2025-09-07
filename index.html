@@ -26,9 +26,8 @@
       width: 100%; padding: 10px; margin-bottom: 12px; font-size: 16px; 
       box-sizing: border-box; background: var(--input-bg); color: var(--text-color); 
       border: 1px solid var(--border-color); border-radius: 8px;
-      /* ✨ 변경점: 폰트 상속 및 크기 조절 수정 */
-      font-family: inherit; /* 부모 요소의 폰트를 그대로 사용 */
-      resize: vertical; /* 세로로만 크기 조절 가능 */
+      font-family: inherit;
+      resize: vertical;
     }
     .pair { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
     .pair input { flex: 1 1 40%; min-width: 40%; }
@@ -39,8 +38,26 @@
     }
     button:hover { background-color: var(--btn-hover-bg); }
     .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
-    .copy-btn { position: absolute; top: 8px; right: 8px; padding: 4px 8px; font-size: 12px; }
-    .output-container, .input-container { position: relative; }
+    
+    /* ✨ 복사 버튼 스타일 수정 */
+    .copy-btn { 
+      position: absolute; 
+      top: 8px; 
+      right: 8px; 
+      padding: 4px 8px; 
+      font-size: 12px; 
+    }
+    
+    /* ✨ 입력창 컨테이너 스타일 추가 */
+    .input-container { 
+      position: relative; 
+      margin-bottom: 8px; /* 하단 여백 조정 */
+    }
+    .input-container textarea {
+        margin-bottom: 0; /* 컨테이너가 여백을 관리하므로 제거 */
+    }
+    
+    .output-container { position: relative; }
     #output { 
       white-space: pre-wrap; background: var(--input-bg); font-size: 16px; line-height: 1.5;
       min-height: 100px; border: 1px solid var(--border-color); padding: 10px; border-radius: 8px;
@@ -50,19 +67,45 @@
     .delete-btn { background: var(--delete-bg); border: 1px solid var(--delete-border); }
     #resetBtn { background-color: var(--reset-bg); }
     .header { display: flex; justify-content: space-between; align-items: center; }
+    
+    .header-controls { display: flex; gap: 8px; }
+    .header-controls button {
+        background-color: var(--btn-bg);
+        color: var(--text-color);
+        border: none;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    .header-controls button:hover {
+        background-color: var(--btn-hover-bg);
+    }
+    .textarea-controls { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 12px; }
+
     @media screen and (max-width: 500px) { .pair input { min-width:100%; flex:1 1 100%; } }
   </style>
 </head>
 <body>
   <div class="header">
     <h1>🔄 단어 치환기</h1>
-    <button onclick="toggleDarkMode()">🌗</button>
+    <div class="header-controls">
+        <button id="main-link-btn" title="돌아가기">🍞️</button>
+        <button id="toggleDarkBtn">🌗</button>
+    </div>
   </div>
 
   <h3>① 문장 입력</h3>
   <div class="input-container">
     <textarea id="inputText" rows="5" placeholder="문장을 입력하세요."></textarea>
     <button class="copy-btn" onclick="copyWithFeedback(this, 'inputText')">복사</button>
+  </div>
+  <div class="textarea-controls">
+    <button id="translate-ko-en" title="한→영 번역">🇬🇧</button>
+    <button id="translate-en-ko" title="영→한 번역">🇰🇷</button>
+    <button id="spell-check" title="맞춤법 검사">🔍</button>
   </div>
 
   <h3>② 단어쌍 관리 (총 <span id="pairCount">0</span>개)</h3>
@@ -91,7 +134,7 @@
     const fileInput = document.getElementById('fileInput');
 
     document.addEventListener('DOMContentLoaded', () => {
-      if (localStorage.getItem('darkMode') === 'enabled') {
+      if (localStorage.getItem('replacer_darkmode') === 'true') {
         document.body.classList.add('dark');
       }
       loadPairs();
@@ -154,8 +197,13 @@
 
     function toggleDarkMode() {
       document.body.classList.toggle('dark');
-      localStorage.setItem('darkMode', document.body.classList.contains('dark') ? 'enabled' : 'disabled');
+      localStorage.setItem('replacer_darkmode', document.body.classList.contains('dark') ? 'true' : 'false');
     }
+    
+    document.getElementById('toggleDarkBtn').addEventListener('click', toggleDarkMode);
+    document.getElementById('main-link-btn').addEventListener('click', () => {
+        window.location.href = "https://toastout.github.io/toast/";
+    });
 
     function moveUp(btn) {
       const cur = btn.parentElement, prev = cur.previousElementSibling;
@@ -249,6 +297,34 @@
       replaceWords();
       updateAllCounts();
     });
+
+    function openTranslator(sl, tl) {
+        const text = inputText.value.trim();
+        if (!text) return;
+        window.open(`https://translate.google.com/?sl=${sl}&tl=${tl}&text=${encodeURIComponent(text)}&op=translate`, '_blank');
+    }
+
+    function openSpellChecker() {
+        const text = inputText.value.trim();
+        if (!text) return;
+        try {
+            const tempInput = document.createElement('textarea');
+            tempInput.value = text;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+            alert('내용이 복사되었습니다. 맞춤법 검사기 사이트에 붙여넣으세요.');
+            window.open('https://nara-speller.co.kr/speller', '_blank');
+        } catch(err) {
+            alert('복사에 실패했습니다.');
+        }
+    }
+
+    document.getElementById('translate-ko-en').addEventListener('click', () => openTranslator('ko', 'en'));
+    document.getElementById('translate-en-ko').addEventListener('click', () => openTranslator('en', 'ko'));
+    document.getElementById('spell-check').addEventListener('click', openSpellChecker);
+
   </script>
 </body>
 </html>
